@@ -65,10 +65,12 @@ export let mySocketID,
 	projects = [],
 	miniMapSketch,
 	selfViewSketch,
-	initialized = false;
+	initialized = false,
+	clients = {},
+	lastPollSyncData = {};
 
-window.clients = {}; // array of connected clients for three.js scene
-window.lastPollSyncData = {};
+window.clients = clients; 
+window.lastPollSyncData = lastPollSyncData;
 
 
 // adding constraints, VIDEO_CONSTRAINTS is video quality levels
@@ -81,6 +83,7 @@ const VIDEO_CONSTRAINTS =
 	vga: { width: { ideal: 640 }, height: { ideal: 480 } },
 	hd: { width: { ideal: 1280 }, height: { ideal: 720 } }
 };
+
 let localMediaConstraints = {
 	audio: true,
 	video: {
@@ -162,25 +165,31 @@ function initSocketConnection() {
 
 		socket.on('connect', () => { });
 
-		//On connection server sends the client his ID and a list of all keys
-		socket.on('introduction', (_id, _ids) => {
+		// On connection server sends the client his ID and a list of all keys
+		socket.on('introduction', async (_id, _ids) => {
 
 			// keep a local copy of my ID:
 			console.log('Connecting to Socket Server.  My socket ID is: ' + _id);
 			mySocketID = _id;
+
 			if (joined) {
 				console.log("Already connected to mediasoup.");
-				// await leaveRoom();
-				// await joinRoom();
 			}
 
-			// for each existing user, add them as a client and add tracks to their peer connection
+			// cull the existing clients array (if we have already populated one)
+			for (let id in clients) {
+				if (!_ids.includes[id]) {
+					removeClient(id);
+				}
+			}
+
+			// then repopulate this array
 			for (let i = 0; i < _ids.length; i++) {
 				if (_ids[i] != mySocketID) {
 					addClient(_ids[i]);
 				}
 			}
-			resolve();
+			resolve(); // is this bad on reconnection?
 		});
 
 		// when a new user has entered the server
@@ -197,7 +206,6 @@ function initSocketConnection() {
 
 		socket.on('projects', _projects => {
 			console.log("Received project list from server.");
-			// console.log(_projects);
 			updateProjects(_projects);
 		});
 
@@ -209,9 +217,7 @@ function initSocketConnection() {
 					console.log("Uh oh!  The server thinks we disconnected!");
 				} else {
 					console.log('A user disconnected with the id: ' + _id);
-					yorbScene.removeClient(_id);
-					removeClientDOMElements(_id);
-					delete clients[_id];
+					removeClient(_id);
 				}
 			}
 		});
@@ -228,16 +234,27 @@ function initSocketConnection() {
 
 
 //==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
-// Clients / WebRTC
+// Clients 
 //==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
 
-
-// Adds client object with THREE.js object, DOM video object and and an RTC peer connection for each :
-async function addClient(_id) {
-	console.log("Adding client with id " + _id);
-	clients[_id] = {};
-	yorbScene.addClient(_id);
+function addClient(_id) {
+	console.log("Attempting to add client with id " + _id);
+	if (clients[_id]) {
+		console.log("Client already exists in clients array!");
+	} else {
+		console.log("Adding client to clients array and to scene.");
+		clients[_id] = {};
+		yorbScene.addClient(_id);
+	}
 }
+
+function removeClient(_id) {
+	console.log('Removing client with ID ' + _id);
+	removeClientDOMElements(_id);
+	yorbScene.removeClient(_id);
+	delete clients[_id];
+}
+
 
 function updateProjects(_projects) {
 	projects = _projects;
@@ -728,7 +745,7 @@ export async function leaveRoom() {
 	log('leave room');
 
 	// stop polling
-	clearInterval(pollingInterval);
+	// clearInterval(pollingInterval);
 
 	// close everything on the server-side (transports, producers, consumers)
 	let { error } = await socket.request('leave');
@@ -758,6 +775,14 @@ export async function leaveRoom() {
 	joined = false;
 }
 window.leaveRoom = leaveRoom;
+
+async function leaveAndReconnect() {
+	for (let id in clients) {
+		removeClientDOMElements(id);
+	}
+	await leaveRoom();
+	await joinRoom();
+}
 
 export async function subscribeToTrack(peerId, mediaTag) {
 	log('subscribe to track', peerId, mediaTag);
@@ -1006,7 +1031,7 @@ async function createTransport(direction) {
 		// we leave the room)
 		if (state === 'closed' || state === 'failed' || state === 'disconnected') {
 			log('transport closed ... leaving the room and resetting');
-			leaveRoom();
+			leaveAndReconnect();
 		}
 	});
 
@@ -1081,11 +1106,10 @@ async function pollAndUpdate() {
 
 		// push through the paused state to new sync list
 		lastPollSyncData = peers;
-
-		setTimeout(pollAndUpdate, 1000);
 	} else {
-		warn("Attempting to poll mediasoup, but we aren't connected yet!");
+		warn("Attempting to poll mediasoup, but we aren't connected!");
 	}
+	setTimeout(pollAndUpdate, 1000);
 }
 
 
