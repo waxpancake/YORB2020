@@ -139,10 +139,11 @@ window.onload = async () => {
 async function init() {
 	yorbScene.controls.lock();
 	document.getElementById("instructions-overlay").style.visibility = "visible";
-	await pollAndUpdate();
+
 
 	// only join room after we user has interacted with DOM (to ensure that media elements play)
 	if (!initialized) {
+		await pollAndUpdate();
 		setupControls();
 		// await joinRoom();
 		// sendCameraStreams();
