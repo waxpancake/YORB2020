@@ -166,8 +166,13 @@ function initSocketConnection() {
 		socket.on('introduction', (_id, _ids) => {
 
 			// keep a local copy of my ID:
-			console.log('My socket ID is: ' + _id);
+			console.log('Connecting to Socket Server.  My socket ID is: ' + _id);
 			mySocketID = _id;
+			if (joined) {
+				console.log("Already connected to mediasoup.");
+				// await leaveRoom();
+				// await joinRoom();
+			}
 
 			// for each existing user, add them as a client and add tracks to their peer connection
 			for (let i = 0; i < _ids.length; i++) {
@@ -505,7 +510,7 @@ export async function joinRoom() {
 
 	await pollAndUpdate(); // start this polling loop
 }
-
+window.joinRoom = joinRoom;
 export async function sendCameraStreams() {
 	log('send camera streams');
 
@@ -752,6 +757,7 @@ export async function leaveRoom() {
 	consumers = [];
 	joined = false;
 }
+window.leaveRoom = leaveRoom;
 
 export async function subscribeToTrack(peerId, mediaTag) {
 	log('subscribe to track', peerId, mediaTag);
@@ -1012,70 +1018,74 @@ async function createTransport(direction) {
 //
 
 async function pollAndUpdate() {
-	log('Polling server for current peers array!');
-	let { peers, error } = await socket.request('sync');
+	if (joined) {
+		log('Polling server for current peers array!');
+		let { peers, error } = await socket.request('sync');
 
-	if (error) {
-		err('PollAndUpdateError: ', error);
-	}
+		if (error) {
+			err('PollAndUpdateError: ', error);
+		}
 
-	if (!mySocketID in peers) {
-		warn("Server doesn't think you're connected!");
-	}
+		if (!mySocketID in peers) {
+			warn("Server doesn't think you're connected!");
+		}
 
-	// decide if we need to update tracks list and video/audio
-	// elements. build list of peers, sorted by join time, removing last
-	// seen time and stats, so we can easily do a deep-equals
-	// comparison. compare this list with the cached list from last
-	// poll.
+		// decide if we need to update tracks list and video/audio
+		// elements. build list of peers, sorted by join time, removing last
+		// seen time and stats, so we can easily do a deep-equals
+		// comparison. compare this list with the cached list from last
+		// poll.
 
-	// auto-subscribe to their feeds:
-	// TODO auto subscribe at lowest spatial layer
-	let closestPeers = yorbScene.getClosestPeers();
-	for (let id in peers) { // for each peer...
-		if (id !== mySocketID) { // if it isnt me...
-			if (closestPeers.includes(id)) { // and if it is close enough in the 3d space...
-				for (let [mediaTag, info] of Object.entries(peers[id].media)) { // for each of the peer's producers...
-					if (!findConsumerForTrack(id, mediaTag)) { // that we don't already have consumers for...
-						log(`auto subscribing to track that ${id} has added`);
-						await subscribeToTrack(id, mediaTag);
+		// auto-subscribe to their feeds:
+		// TODO auto subscribe at lowest spatial layer
+		let closestPeers = yorbScene.getClosestPeers();
+		for (let id in peers) { // for each peer...
+			if (id !== mySocketID) { // if it isnt me...
+				if (closestPeers.includes(id)) { // and if it is close enough in the 3d space...
+					for (let [mediaTag, info] of Object.entries(peers[id].media)) { // for each of the peer's producers...
+						if (!findConsumerForTrack(id, mediaTag)) { // that we don't already have consumers for...
+							log(`auto subscribing to track that ${id} has added`);
+							await subscribeToTrack(id, mediaTag);
+						}
 					}
 				}
 			}
 		}
-	}
 
 
-	// if a peer has gone away, we need to close all consumers we have
-	// for that peer and remove video and audio elements
-	for (let id in lastPollSyncData) {
-		if (!peers[id]) {
-			log(`Peer ${id} has exited`);
-			consumers.forEach((consumer) => {
-				if (consumer.appData.peerId === id) {
-					closeConsumer(consumer);
-				}
-			});
+		// if a peer has gone away, we need to close all consumers we have
+		// for that peer and remove video and audio elements
+		for (let id in lastPollSyncData) {
+			if (!peers[id]) {
+				log(`Peer ${id} has exited`);
+				consumers.forEach((consumer) => {
+					if (consumer.appData.peerId === id) {
+						closeConsumer(consumer);
+					}
+				});
+			}
 		}
+
+		// if a peer has stopped sending media that we are consuming, we
+		// need to close the consumer and remove video and audio elements
+		consumers.forEach((consumer) => {
+			let { peerId, mediaTag } = consumer.appData;
+			if (!peers[peerId]) {
+				log(`Peer ${peerId} has stopped transmitting ${mediaTag}`);
+				closeConsumer(consumer);
+			} else if (!peers[peerId].media[mediaTag]) {
+				log(`Peer ${peerId} has stopped transmitting ${mediaTag}`);
+				closeConsumer(consumer);
+			}
+		});
+
+		// push through the paused state to new sync list
+		lastPollSyncData = peers;
+
+		setTimeout(pollAndUpdate, 1000);
+	} else {
+		warn("Attempting to poll mediasoup, but we aren't connected yet!");
 	}
-
-	// if a peer has stopped sending media that we are consuming, we
-	// need to close the consumer and remove video and audio elements
-	consumers.forEach((consumer) => {
-		let { peerId, mediaTag } = consumer.appData;
-		if (!peers[peerId]) {
-			log(`Peer ${peerId} has stopped transmitting ${mediaTag}`);
-			closeConsumer(consumer);
-		} else if (!peers[peerId].media[mediaTag]) {
-			log(`Peer ${peerId} has stopped transmitting ${mediaTag}`);
-			closeConsumer(consumer);
-		}
-	});
-
-	// push through the paused state to new sync list
-	lastPollSyncData = peers;
-
-	setTimeout(pollAndUpdate, 1000);
 }
 
 
