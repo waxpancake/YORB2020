@@ -507,6 +507,7 @@ function removeClientDOMElements(_id) {
 
 export async function joinRoom() {
 	if (joined) {
+		log('Cannot join room as we are already connected.');
 		return;
 	}
 	log('join room');
@@ -768,8 +769,8 @@ export async function leaveRoom() {
 	camAudioProducer = null;
 	screenVideoProducer = null;
 	screenAudioProducer = null;
-	localCam = null;
-	localScreen = null;
+	// localCam = null;
+	// localScreen = null;
 	lastPollSyncData = {};
 	consumers = [];
 	joined = false;
@@ -783,7 +784,9 @@ async function leaveAndReconnect() {
 	}
 	await leaveRoom();
 	await joinRoom();
+	sendCameraStreams();
 }
+window.leaveAndReconnect = leaveAndReconnect;
 
 export async function subscribeToTrack(peerId, mediaTag) {
 	log('subscribe to track', peerId, mediaTag);
