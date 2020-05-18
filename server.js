@@ -978,8 +978,8 @@ async function startMediasoup() {
 }
 
 function closePeer(peerId) {
-  log('closing peer', peerId);
   let peerLoc = peerLocations[peerId.toString()];
+  log('Closing peer', peerId, 'in room #',peerLoc);
   for (let [id, transport] of Object.entries(roomStates[peerLoc].transports)) {
     if (transport.appData.peerId === peerId) {
       closeTransport(transport, peerId);

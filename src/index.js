@@ -777,6 +777,7 @@ export async function leaveRoom() {
 window.leaveRoom = leaveRoom;
 
 async function leaveAndReconnect() {
+	log("Attempting to leave and rejoin mediasoup.");
 	for (let id in clients) {
 		removeClientDOMElements(id);
 	}
@@ -1029,8 +1030,11 @@ async function createTransport(direction) {
 		// for this simple sample code, assume that transports being
 		// closed is an error (we never close these transports except when
 		// we leave the room)
-		if (state === 'closed' || state === 'failed' || state === 'disconnected') {
-			log('transport closed ... leaving the room and resetting');
+		if (state === 'closed'){
+			// this was likely intentional
+		} else if (state === 'failed' || state === 'disconnected') {
+			// this was likely a network connection issue
+			log('Transport failed or disconnected ... leaving the room and resetting.');
 			leaveAndReconnect();
 		}
 	});
