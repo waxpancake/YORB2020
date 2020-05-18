@@ -112,24 +112,25 @@ window.onload = async () => {
 		device = new mediasoup.Device();
 	} catch (e) {
 		if (e.name === 'UnsupportedError') {
-			console.error('browser not supported for video calls');
+			console.error('Browser not supported for video calls');
 			return;
 		} else {
 			console.error(e);
 		}
 	}
 
+	alert("YORB is a social experience.  Allow YORB to access your webcam for the full experience");
+	await startCamera();
 	await initSocketConnection();
 
 	// use sendBeacon to tell the server we're disconnecting when
 	// the page unloads
 	window.addEventListener('unload', () => {
-		socket.request('leave', {});
+		socket.emit('leave', {});
 		// sig('leave', {}, true)
 	});
 
-	alert("YORB is a social experience.  Allow YORB to access your webcam for the full experience");
-	await startCamera();
+
 
 	var startButton = document.getElementById('startButton');
 	startButton.addEventListener('click', init);
@@ -143,11 +144,11 @@ async function init() {
 
 	// only join room after we user has interacted with DOM (to ensure that media elements play)
 	if (!initialized) {
-		await pollAndUpdate();
+		
 		setupControls();
-		// await joinRoom();
-		// sendCameraStreams();
-		// setupControls();
+		await joinRoom();
+		await sendCameraStreams();
+		await pollAndUpdate();
 		initialized = true;
 	}
 }
@@ -178,9 +179,6 @@ function initSocketConnection() {
 			if (joined) {
 				console.log("Already connected to mediasoup. Uh oh!  Attempting to leave and rejoin.");
 				await leaveRoomAndRemoveClientDOMElements();
-				await joinRoom();
-				await sendCameraStreams();
-			} else {
 				await joinRoom();
 				await sendCameraStreams();
 			}
@@ -756,22 +754,15 @@ export async function leaveRoom() {
 
 	log('Leaving room');
 
-	// stop polling
-	// clearInterval(pollingInterval);
-
 	// close everything on the server-side (transports, producers, consumers)
-	// let { error } = await socket.request('leave');
-	// if (error) {
-	// 	err(error);
-	// }
-	socket.request('leave');
+	socket.emit('leave');
 
 	// closing the transports closes all producers and consumers. we
 	// don't need to do anything beyond closing the transports, except
 	// to set all our local variables to their initial states
 	try {
-		recvTransport && await recvTransport.close();
-		sendTransport && await sendTransport.close();
+		if (recvTransport) { recvTransport.close() };
+		if (sendTransport) { sendTransport.close() };
 	} catch (e) {
 		console.error(e);
 	}
@@ -1045,8 +1036,7 @@ async function createTransport(direction) {
 			// this was likely intentional
 		} else if (state === 'failed' || state === 'disconnected') {
 			// this was likely a network connection issue
-			log('Transport failed or disconnected ... leaving the room and resetting.');
-			leaveRoomAndRemoveClientDOMElements();
+			log('Transport failed or disconnected ...');
 		}
 	});
 
