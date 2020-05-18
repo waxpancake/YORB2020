@@ -69,7 +69,7 @@ export let mySocketID,
 	clients = {},
 	lastPollSyncData = {};
 
-window.clients = clients; 
+window.clients = clients;
 window.lastPollSyncData = lastPollSyncData;
 
 
@@ -128,7 +128,7 @@ window.onload = async () => {
 		// sig('leave', {}, true)
 	});
 
-	alert("Allow YORB to access your webcam for the full experience");
+	alert("YORB is a social experience.  Allow YORB to access your webcam for the full experience");
 	await startCamera();
 
 	var startButton = document.getElementById('startButton');
@@ -139,12 +139,14 @@ window.onload = async () => {
 async function init() {
 	yorbScene.controls.lock();
 	document.getElementById("instructions-overlay").style.visibility = "visible";
+	await pollAndUpdate();
 
 	// only join room after we user has interacted with DOM (to ensure that media elements play)
 	if (!initialized) {
-		await joinRoom();
-		sendCameraStreams();
 		setupControls();
+		// await joinRoom();
+		// sendCameraStreams();
+		// setupControls();
 		initialized = true;
 	}
 }
@@ -173,8 +175,15 @@ function initSocketConnection() {
 			mySocketID = _id;
 
 			if (joined) {
-				console.log("Already connected to mediasoup.");
+				console.log("Already connected to mediasoup. Uh oh!  Attempting to leave and rejoin.");
+				await leaveRoomAndRemoveClientDOMElements();
+				await joinRoom();
+				await sendCameraStreams();
+			} else {
+				await joinRoom();
+				await sendCameraStreams();
 			}
+
 
 			// cull the existing clients array (if we have already populated one)
 			for (let id in clients) {
@@ -526,7 +535,7 @@ export async function joinRoom() {
 		return;
 	}
 
-	await pollAndUpdate(); // start this polling loop
+	// await pollAndUpdate(); // start this polling loop
 }
 window.joinRoom = joinRoom;
 export async function sendCameraStreams() {
@@ -740,10 +749,11 @@ export async function stopStreams() {
 
 export async function leaveRoom() {
 	if (!joined) {
+		log("No need to leave room.  We've already left.");
 		return;
 	}
 
-	log('leave room');
+	log('Leaving room');
 
 	// stop polling
 	// clearInterval(pollingInterval);
@@ -778,16 +788,12 @@ export async function leaveRoom() {
 }
 window.leaveRoom = leaveRoom;
 
-async function leaveAndReconnect() {
-	log("Attempting to leave and rejoin mediasoup.");
+async function leaveRoomAndRemoveClientDOMElements() {
 	for (let id in clients) {
 		removeClientDOMElements(id);
 	}
 	await leaveRoom();
-	await joinRoom();
-	sendCameraStreams();
 }
-window.leaveAndReconnect = leaveAndReconnect;
 
 export async function subscribeToTrack(peerId, mediaTag) {
 	log('subscribe to track', peerId, mediaTag);
@@ -1034,12 +1040,12 @@ async function createTransport(direction) {
 		// for this simple sample code, assume that transports being
 		// closed is an error (we never close these transports except when
 		// we leave the room)
-		if (state === 'closed'){
+		if (state === 'closed') {
 			// this was likely intentional
 		} else if (state === 'failed' || state === 'disconnected') {
 			// this was likely a network connection issue
 			log('Transport failed or disconnected ... leaving the room and resetting.');
-			leaveAndReconnect();
+			leaveRoomAndRemoveClientDOMElements();
 		}
 	});
 
