@@ -749,10 +749,11 @@ export async function leaveRoom() {
 	// clearInterval(pollingInterval);
 
 	// close everything on the server-side (transports, producers, consumers)
-	let { error } = await socket.request('leave');
-	if (error) {
-		err(error);
-	}
+	// let { error } = await socket.request('leave');
+	// if (error) {
+	// 	err(error);
+	// }
+	socket.request('leave');
 
 	// closing the transports closes all producers and consumers. we
 	// don't need to do anything beyond closing the transports, except
